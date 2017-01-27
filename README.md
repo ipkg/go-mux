@@ -1,6 +1,6 @@
 # go-mux
 
-General purpose muxer.
+General purpose muxer.  It contains UTP and TCP ListenerDialer
 
 ## Acknowlegements
 
