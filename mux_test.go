@@ -30,8 +30,10 @@ func TestMux(t *testing.T) {
 		tcpListener := mustTCPListener("127.0.0.1:0")
 		defer tcpListener.Close()
 
+		lgen := &TCPLayerGen{}
+
 		// Setup muxer & listeners.
-		mux := NewMux(tcpListener, nil)
+		mux := NewMux(tcpListener, nil, lgen)
 		mux.Timeout = 200 * time.Millisecond
 		if !testing.Verbose() {
 			mux.Logger = log.New(ioutil.Discard, "", 0)
@@ -127,7 +129,8 @@ func TestMux_Advertise(t *testing.T) {
 		Addr: "rqlite.com:8081",
 	}
 
-	mux := NewMux(tcpListener, addr)
+	lgen := &TCPLayerGen{}
+	mux := NewMux(tcpListener, addr, lgen)
 	mux.Timeout = 200 * time.Millisecond
 	if !testing.Verbose() {
 		mux.Logger = log.New(ioutil.Discard, "", 0)
@@ -148,9 +151,11 @@ func TestMux_Listen_ErrAlreadyRegistered(t *testing.T) {
 		}
 	}()
 
+	lgen := &TCPLayerGen{}
+
 	// Register two listeners with the same header byte.
 	tcpListener := mustTCPListener("127.0.0.1:0")
-	mux := NewMux(tcpListener, nil)
+	mux := NewMux(tcpListener, nil, lgen)
 	mux.Listen(5)
 	mux.Listen(5)
 }

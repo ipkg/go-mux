@@ -9,52 +9,27 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/anacrolix/utp"
 )
 
 // This is originally taken from rqlite/rqlite project on github.
-
-// UTP muxer
 
 const (
 	// DefaultTimeout is the default length of time to wait for first byte.
 	DefaultTimeout = 30 * time.Second
 )
 
-// Layer represents the connection between nodes.
-type Layer struct {
-	ln     net.Listener
-	header byte
-	addr   net.Addr
+// ListenerDialer implements a listenr and dialer for the network.
+type ListenerDialer interface {
+	Addr() net.Addr
+	Dial(addr string, timeout time.Duration) (net.Conn, error)
+	Accept() (net.Conn, error)
+	Close() error
 }
 
-// Addr returns the local address for the layer.
-func (l *Layer) Addr() net.Addr {
-	return l.addr
+// LayerGenerator generates a ListenerDialer
+type LayerGenerator interface {
+	New(net.Listener, net.Addr, byte) ListenerDialer
 }
-
-// Dial creates a new network connection.
-func (l *Layer) Dial(addr string, timeout time.Duration) (net.Conn, error) {
-	conn, err := utp.DialTimeout(addr, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	// Write a marker byte to indicate message type.
-	_, err = conn.Write([]byte{l.header})
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return conn, err
-}
-
-// Accept waits for the next connection.
-func (l *Layer) Accept() (net.Conn, error) { return l.ln.Accept() }
-
-// Close closes the layer.
-func (l *Layer) Close() error { return l.ln.Close() }
 
 // Mux multiplexes a network connection.
 type Mux struct {
@@ -69,11 +44,14 @@ type Mux struct {
 
 	// Out-of-band error logger
 	Logger *log.Logger
+
+	// layer generator supplied on instantiation
+	layerg LayerGenerator
 }
 
 // NewMux returns a new instance of Mux for ln. If adv is nil,
 // then the addr of ln is used.
-func NewMux(ln net.Listener, adv net.Addr) *Mux {
+func NewMux(ln net.Listener, adv net.Addr, layer LayerGenerator) *Mux {
 	addr := adv
 	if addr == nil {
 		addr = ln.Addr()
@@ -85,6 +63,7 @@ func NewMux(ln net.Listener, adv net.Addr) *Mux {
 		m:       make(map[byte]*listener),
 		Timeout: DefaultTimeout,
 		Logger:  log.New(os.Stderr, "[mux] ", log.LstdFlags),
+		layerg:  layer,
 	}
 }
 
@@ -155,7 +134,7 @@ func (mux *Mux) handleConn(conn net.Conn) {
 
 // Listen returns a listener identified by header.
 // Any connection accepted by mux is multiplexed based on the initial header byte.
-func (mux *Mux) Listen(header byte) *Layer {
+func (mux *Mux) Listen(header byte) ListenerDialer {
 	// Ensure two listeners are not created for the same header byte.
 	if _, ok := mux.m[header]; ok {
 		panic(fmt.Sprintf("listener already registered under header byte: %d", header))
@@ -167,13 +146,7 @@ func (mux *Mux) Listen(header byte) *Layer {
 	}
 	mux.m[header] = ln
 
-	layer := &Layer{
-		ln:     ln,
-		header: header,
-		addr:   mux.addr,
-	}
-
-	return layer
+	return mux.layerg.New(ln, mux.addr, header)
 }
 
 // listener is a receiver for connections received by Mux.
@@ -196,7 +169,7 @@ func (ln *listener) Close() error { return nil }
 // Addr always returns nil
 func (ln *listener) Addr() net.Addr { return nil }
 
-// Dial connects to a remote mux listener with a given header byte.
+/*// Dial connects to a remote mux listener with a given header byte.
 func Dial(address string, header byte) (net.Conn, error) {
 
 	conn, err := utp.Dial(address)
@@ -209,4 +182,4 @@ func Dial(address string, header byte) (net.Conn, error) {
 	}
 
 	return conn, nil
-}
+}*/
